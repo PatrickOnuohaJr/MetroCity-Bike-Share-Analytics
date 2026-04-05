@@ -1,0 +1,2 @@
+USE metrobike;
+SHOW COLUMNS IN bronze_trips;
