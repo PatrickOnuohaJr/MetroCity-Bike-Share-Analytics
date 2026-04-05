@@ -1,0 +1,43 @@
+USE metrobike;
+
+CREATE OR REPLACE TABLE silver_trips AS
+WITH base AS (
+  SELECT
+    CAST(`Trip ID` AS BIGINT)                                   AS trip_id,
+    `Membership or Pass Type`                                   AS membership_type,
+    `Bicycle ID`                                                AS bike_id,
+    LOWER(`Bike Type`)                                          AS bike_type,
+
+    -- Build checkout timestamp (prefer combined, else date+time)
+    COALESCE(
+      TRY_TO_TIMESTAMP(`Checkout Datetime`, 'MM/dd/yyyy hh:mm:ss a'),
+      TRY_TO_TIMESTAMP(CONCAT(`Checkout Date`,' ',`Checkout Time`), 'yyyy-MM-dd hh:mm:ss a'),
+      TRY_TO_TIMESTAMP(CONCAT(`Checkout Date`,' ',`Checkout Time`), 'yyyy-MM-dd HH:mm:ss')
+    )                                                           AS checkout_ts,
+
+    -- Clean duration string: remove commas/whitespace, then try-cast to DOUBLE (minutes)
+    TRY_CAST(REPLACE(TRIM(`Trip Duration Minutes`), ',', '') AS DOUBLE) AS duration_min_raw,
+
+    `Checkout Kiosk ID`                                        AS checkout_kiosk_id,
+    `Checkout Kiosk`                                           AS checkout_kiosk,
+    `Return Kiosk ID`                                          AS return_kiosk_id,
+    `Return Kiosk`                                             AS return_kiosk
+  FROM metrobike.bronze_trips
+),
+final AS (
+  SELECT
+    trip_id, membership_type, bike_id, bike_type,
+    checkout_ts,
+    duration_min_raw                                           AS trip_duration_min,
+    -- reconstruct return_ts = checkout_ts + duration (minutes)
+    CASE WHEN checkout_ts IS NOT NULL AND duration_min_raw IS NOT NULL
+         THEN TIMESTAMPADD(MINUTE, duration_min_raw, checkout_ts)
+    END                                                        AS return_ts,
+    checkout_kiosk_id, checkout_kiosk, return_kiosk_id, return_kiosk
+  FROM base
+)
+SELECT *
+FROM final
+WHERE checkout_ts IS NOT NULL
+  AND trip_duration_min IS NOT NULL
+  AND trip_duration_min BETWEEN 2 AND 180;   -- filter to valid rides
