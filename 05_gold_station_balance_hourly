@@ -1,0 +1,53 @@
+USE metrobike;
+
+CREATE OR REPLACE TABLE gold_station_balance_hourly AS
+WITH
+-- hourly checkouts per kiosk
+co AS (
+  SELECT
+    CAST(checkout_kiosk_id AS STRING) AS kiosk_id,
+    date_trunc('hour', checkout_ts)    AS ts_hour,
+    COUNT(*)                           AS checkouts
+  FROM silver_trips
+  GROUP BY 1,2
+),
+-- hourly returns per kiosk
+re AS (
+  SELECT
+    CAST(return_kiosk_id AS STRING) AS kiosk_id,
+    date_trunc('hour', return_ts)   AS ts_hour,
+    COUNT(*)                        AS returns
+  FROM silver_trips
+  GROUP BY 1,2
+),
+-- combine, fill missing sides with 0
+hr AS (
+  SELECT
+    COALESCE(co.kiosk_id, re.kiosk_id)   AS kiosk_id,
+    COALESCE(co.ts_hour, re.ts_hour)     AS ts_hour,
+    COALESCE(co.checkouts, 0)            AS checkouts,
+    COALESCE(re.returns,   0)            AS returns
+  FROM co
+  FULL OUTER JOIN re
+    ON co.kiosk_id = re.kiosk_id AND co.ts_hour = re.ts_hour
+)
+SELECT
+  hr.kiosk_id,
+  sk.kiosk_name,
+  sk.capacity,
+  sk.latitude,
+  sk.longitude,
+  hr.ts_hour                                   AS ts,
+  hr.checkouts,
+  hr.returns,
+  (hr.returns - hr.checkouts)                  AS net_flow,
+  (hr.checkouts + hr.returns)                  AS total_moves,
+  CASE WHEN (hr.checkouts + hr.returns) > 0
+       THEN abs(hr.returns - hr.checkouts) / (hr.checkouts + hr.returns)
+       ELSE NULL
+  END                                          AS imbalance_ratio,
+  (hour(hr.ts_hour) BETWEEN 15 AND 19)         AS is_peak,
+  (dayofweek(hr.ts_hour) IN (1,7))             AS is_weekend
+FROM hr
+LEFT JOIN silver_kiosks sk
+  ON sk.kiosk_id = hr.kiosk_id;
