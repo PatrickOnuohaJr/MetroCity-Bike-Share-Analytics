@@ -1,0 +1,29 @@
+SELECT * 
+FROM metrobike.gold_station_balance_hourly
+LIMIT 50000;
+
+-- ============================================================
+-- SECTION 2: Gold Layer Analysis
+-- ============================================================
+
+-- Row count
+SELECT COUNT(*) AS rows FROM gold_station_balance_hourly;
+
+-- Quick peek (most recent activity)
+SELECT * FROM gold_station_balance_hourly 
+ORDER BY ts DESC, kiosk_id 
+LIMIT 10;
+
+-- Busiest hours by total moves
+SELECT ts, SUM(total_moves) AS moves
+FROM gold_station_balance_hourly
+GROUP BY ts
+ORDER BY moves DESC
+LIMIT 10;
+
+-- Top 10 most imbalanced kiosks
+SELECT kiosk_name, ts, checkouts, returns, net_flow, imbalance_ratio
+FROM gold_station_balance_hourly
+WHERE total_moves >= 10
+ORDER BY imbalance_ratio DESC
+LIMIT 10;
