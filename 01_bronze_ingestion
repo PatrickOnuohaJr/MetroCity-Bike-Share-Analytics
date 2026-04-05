@@ -1,0 +1,16 @@
+USE metrobike;
+SHOW TABLES;
+SELECT COUNT(*) AS rows FROM bronze_kiosks;
+SELECT * FROM bronze_kiosks LIMIT 10;
+
+
+-- ============================================================
+-- SECTION 2: bronze_trips Inspection
+-- ============================================================
+USE metrobike;
+
+-- Row count
+SELECT COUNT(*) AS rows FROM bronze_trips;
+
+-- Preview first 10 rows
+SELECT * FROM bronze_trips LIMIT 10;
