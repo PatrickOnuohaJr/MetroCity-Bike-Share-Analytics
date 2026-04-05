@@ -1,0 +1,33 @@
+USE metrobike;
+
+CREATE OR REPLACE TABLE silver_kiosks AS
+WITH src AS (
+  SELECT
+    /* prefer explicit kiosk IDs/names if present in the kiosks file */
+    COALESCE(`Checkout Kiosk ID`, `Return Kiosk ID`)  AS kiosk_id_raw,
+    COALESCE(`Checkout Kiosk`,   `Return Kiosk`)      AS kiosk_name_raw,
+    COALESCE(`Checkout Number of Docks`, `Return Number of Docks`) AS num_docks_raw,
+    COALESCE(`Checkout Location`, `Return Location`)  AS location_text
+  FROM bronze_kiosks
+),
+parsed AS (
+  SELECT
+    CAST(kiosk_id_raw AS STRING)                      AS kiosk_id,
+    kiosk_name_raw                                    AS kiosk_name,
+    TRY_CAST(num_docks_raw AS INT)                    AS capacity,
+
+    /* parse "(lat, lon)" into numeric columns if present */
+    TRY_CAST(REGEXP_EXTRACT(location_text, '\\(([-0-9\\.]+),') AS DOUBLE)        AS latitude,
+    TRY_CAST(REGEXP_EXTRACT(location_text, ',\\s*([-0-9\\.]+)\\)') AS DOUBLE)    AS longitude
+  FROM src
+)
+SELECT DISTINCT kiosk_id, kiosk_name, capacity, latitude, longitude
+FROM parsed
+WHERE kiosk_id IS NOT NULL OR kiosk_name IS NOT NULL
+
+UNION
+
+/* backfill any kiosks that only appear in trips but not in the kiosks file */
+SELECT DISTINCT CAST(checkout_kiosk_id AS STRING), checkout_kiosk, NULL, NULL, NULL FROM silver_trips
+UNION
+SELECT DISTINCT CAST(return_kiosk_id  AS STRING), return_kiosk,  NULL, NULL, NULL FROM silver_trips;
